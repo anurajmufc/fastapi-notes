@@ -7,10 +7,10 @@ name = "pypi"
 fastapi = "*"
 uvicorn = "*"
 sqlalchemy = "*"
-psycopg2-binary = "*"
 requests = "*"
 pydantic = {extras = ["email"], version = "*"}
 python-dotenv = "*"
+asyncpg = "*"
 
 [dev-packages]
 

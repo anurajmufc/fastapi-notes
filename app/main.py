@@ -1,35 +1,41 @@
 from typing import Annotated
 
-from fastapi import FastAPI, HTTPException, status, Request, Depends
-from fastapi.responses import JSONResponse
-from fastapi.exceptions import RequestValidationError
-from pydantic import BaseModel
-from schemas import NoteCreate, NoteResponse, UserCreate, UserResponse, NoteUpdate, UserUpdate
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, HTTPException, status, Depends
+from schemas import (NoteCreate, NoteResponse, UserCreate,
+                     UserResponse, NoteUpdate, UserUpdate)
 
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import selectinload
 import models
 from database import Base, engine, get_db
 
-Base.metadata.create_all(bind=engine)
 
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    # Startup
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    yield
+    # Shutdown
+    await engine.dispose()
 
-app = FastAPI()
+app = FastAPI(lifespan=lifespan)
 
 # Home route
 
 
 @app.get("/")
-def read_root():
+async def read_root():
     return "Welcome to my notes api"
 
 # Route to get all notes
 
 
-@app.get("/api/notes", name="notes")
-def get_notes(db: Annotated[Session, Depends(get_db)]):
-    result = db.execute(select(models.Note))
+@app.get("/api/notes", name="notes", response_model=list[NoteResponse])
+async def get_notes(db: Annotated[AsyncSession, Depends(get_db)]):
+    result = await db.execute(select(models.Note).options(selectinload(models.Note.author)))
     notes = result.scalars().all()
     return list(notes)
 
@@ -37,8 +43,8 @@ def get_notes(db: Annotated[Session, Depends(get_db)]):
 
 
 @app.get("/api/notes/{note_id}", response_model=NoteResponse)
-def get_note(note_id: int, db: Annotated[Session, Depends(get_db)]):
-    result = db.execute(select(models.Note).where(models.Note.id == note_id))
+async def get_note(note_id: int, db: Annotated[AsyncSession, Depends(get_db)]):
+    result = await db.execute(select(models.Note).options(selectinload(models.Note.author)).where(models.Note.id == note_id))
     note = result.scalars().first()
     if note:
         return note
@@ -49,10 +55,11 @@ def get_note(note_id: int, db: Annotated[Session, Depends(get_db)]):
 
 
 @app.put("/api/notes/{note_id}", response_model=NoteResponse)
-def update_note_full(note_id: int, note_data: NoteCreate, db: Annotated[Session, Depends(get_db)]):
+async def update_note_full(note_id: int, note_data: NoteCreate, db: Annotated[AsyncSession, Depends(get_db)]):
 
     # Check if note exists in db
-    result = db.execute(select(models.Note).where(models.Note.id == note_id))
+    result = await db.execute(select(models.Note).options(
+        selectinload(models.Note.author)).where(models.Note.id == note_id))
     note = result.scalars().first()
     if not note:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
@@ -60,7 +67,7 @@ def update_note_full(note_id: int, note_data: NoteCreate, db: Annotated[Session,
 
     # Check if user id linked to the note that is supposed to be changed exists
     if note_data.user_id != note.user_id:
-        result = db.execute(select(models.User).where(
+        result = await db.execute(select(models.User).where(
             models.User.id == note_data.user_id))
         user = result.scalars().first()
         if not user:
@@ -70,20 +77,20 @@ def update_note_full(note_id: int, note_data: NoteCreate, db: Annotated[Session,
     # Replace the note
     note.title = note_data.title
     note.content = note_data.content
-    note.user_id=note.user_id
+    note.user_id = note_data.user_id
 
-    db.commit()
-    db.refresh(note)
+    await db.commit()
+    await db.refresh(note, ["author"])
     return note
 
 # Route to update a note(partial)
 
 
 @app.patch("/api/notes/{note_id}", response_model=NoteResponse)
-def update_note_partial(note_id: int, note_data: NoteUpdate, db: Annotated[Session, Depends(get_db)]):
+async def update_note_partial(note_id: int, note_data: NoteUpdate, db: Annotated[AsyncSession, Depends(get_db)]):
 
     # Check if note exists in db
-    result = db.execute(select(models.Note).where(models.Note.id == note_id))
+    result = await db.execute(select(models.Note).options(selectinload(models.Note.author)).where(models.Note.id == note_id))
     note = result.scalars().first()
     if not note:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
@@ -94,16 +101,17 @@ def update_note_partial(note_id: int, note_data: NoteUpdate, db: Annotated[Sessi
     for field, value in update_data.items():
         setattr(note, field, value)
 
-    db.commit()
-    db.refresh(note)
+    await db.commit()
+    await db.refresh(note)
     return note
 
 # Route to delete a specific note based on its id
 
 
 @app.delete("/api/notes/{note_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_note(note_id: int, db: Annotated[Session, Depends(get_db)]):
-    result = db.execute(select(models.Note).where(models.Note.id == note_id))
+async def delete_note(note_id: int, db: Annotated[AsyncSession, Depends(get_db)]):
+    result = await db.execute(select(models.Note).options(
+        selectinload(models.Note.author)).where(models.Note.id == note_id))
     note = result.scalars().first()
 
     # Check if note exists
@@ -111,16 +119,16 @@ def delete_note(note_id: int, db: Annotated[Session, Depends(get_db)]):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
                             detail="Note not found")
 
-    db.delete(note)
-    db.commit()
+    await db.delete(note)
+    await db.commit()
 
 
 # Route to create user
 
 
 @app.post("/api/users", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-def create_user(user: UserCreate, db: Annotated[Session, Depends(get_db)]):
-    result = db.execute(select(models.User).where(
+async def create_user(user: UserCreate, db: Annotated[AsyncSession, Depends(get_db)]):
+    result = await db.execute(select(models.User).where(
         models.User.username == user.username))
     existing_user = result.scalars().first()
     if existing_user:
@@ -129,7 +137,7 @@ def create_user(user: UserCreate, db: Annotated[Session, Depends(get_db)]):
             detail="Username already exists",
         )
 
-    result = db.execute(select(models.User).where(
+    result = await db.execute(select(models.User).where(
         models.User.email == user.email))
     existing_email = result.scalars().first()
     if existing_email:
@@ -144,8 +152,8 @@ def create_user(user: UserCreate, db: Annotated[Session, Depends(get_db)]):
     )
 
     db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
+    await db.commit()
+    await db.refresh(new_user)
 
     return new_user
 
@@ -154,10 +162,10 @@ def create_user(user: UserCreate, db: Annotated[Session, Depends(get_db)]):
 
 
 @app.patch("/api/users/{user_id}", response_model=UserResponse)
-def update_user(user_id: int, user_update: UserUpdate, db: Annotated[Session, Depends(get_db)]):
+async def update_user(user_id: int, user_update: UserUpdate, db: Annotated[AsyncSession, Depends(get_db)]):
 
     # Check if user exists
-    result = db.execute(select(models.User).where(
+    result = await db.execute(select(models.User).where(
         models.User.id == user_id))
     user = result.scalars().first()
     if not user:
@@ -168,7 +176,7 @@ def update_user(user_id: int, user_update: UserUpdate, db: Annotated[Session, De
 
     # Check if new username is different and it doesn't exist in the database already
     if user_update.username is not None and user_update.username != user.username:
-        result = db.execute(select(models.User).where(
+        result = await db.execute(select(models.User).where(
             models.User.username == user_update.username))
         existing_user = result.scalars().first()
         if existing_user:
@@ -179,7 +187,7 @@ def update_user(user_id: int, user_update: UserUpdate, db: Annotated[Session, De
 
     # Check if new username is different and it doesn't exist in the database already
     if user_update.email is not None and user_update.email != user.email:
-        result = db.execute(select(models.User).where(
+        result = await db.execute(select(models.User).where(
             models.User.email == user_update.email))
         existing_email = result.scalars().first()
         if existing_email:
@@ -192,16 +200,16 @@ def update_user(user_id: int, user_update: UserUpdate, db: Annotated[Session, De
     for field, value in update_data.items():
         setattr(user, field, value)
 
-    db.commit()
-    db.refresh(user)
+    await db.commit()
+    await db.refresh(user)
     return user
 
 # Route to delete a user
 
 
 @app.delete("/api/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_user(user_id: int, db: Annotated[Session, Depends(get_db)]):
-    result = db.execute(select(models.User).where(models.User.id == user_id))
+async def delete_user(user_id: int, db: Annotated[AsyncSession, Depends(get_db)]):
+    result = await db.execute(select(models.User).where(models.User.id == user_id))
     user = result.scalars().first()
 
     # Check if user exists
@@ -209,15 +217,15 @@ def delete_user(user_id: int, db: Annotated[Session, Depends(get_db)]):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
                             detail="User not found")
 
-    db.delete(user)
-    db.commit()
+    await db.delete(user)
+    await db.commit()
 
 # route to find a specific user based on user id
 
 
 @app.get("/api/users/{user_id}", response_model=UserResponse)
-def get_user(user_id: int, db: Annotated[Session, Depends(get_db)]):
-    result = db.execute(select(models.User).where(
+async def get_user(user_id: int, db: Annotated[AsyncSession, Depends(get_db)]):
+    result = await db.execute(select(models.User).where(
         models.User.id == user_id))
     user = result.scalars().first()
 
@@ -231,8 +239,8 @@ def get_user(user_id: int, db: Annotated[Session, Depends(get_db)]):
 
 
 @app.get("/api/users/{user_id}/notes", response_model=list[NoteResponse])
-def get_user_posts(user_id: int, db: Annotated[Session, Depends(get_db)]):
-    result = db.execute(select(models.User).where(
+async def get_user_posts(user_id: int, db: Annotated[AsyncSession, Depends(get_db)]):
+    result = await db.execute(select(models.User).where(
         models.User.id == user_id))
     user = result.scalars().first()
 
@@ -240,7 +248,7 @@ def get_user_posts(user_id: int, db: Annotated[Session, Depends(get_db)]):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
-    result = db.execute(select(models.Note).where(
+    result = await db.execute(select(models.Note).options(selectinload(models.Note.author)).where(
         models.Note.user_id == user_id))
     notes = result.scalars().all()
     return notes
@@ -248,8 +256,8 @@ def get_user_posts(user_id: int, db: Annotated[Session, Depends(get_db)]):
 
 # Route to create a note
 @app.post("/api/notes", response_model=NoteResponse, status_code=status.HTTP_201_CREATED)
-def create_note(note: NoteCreate, db: Annotated[Session, Depends(get_db)]):
-    result = db.execute(select(models.User).where(
+async def create_note(note: NoteCreate, db: Annotated[AsyncSession, Depends(get_db)]):
+    result = await db.execute(select(models.User).where(
         models.User.id == note.user_id))
     user = result.scalars().first()
     if not user:
@@ -261,6 +269,6 @@ def create_note(note: NoteCreate, db: Annotated[Session, Depends(get_db)]):
         user_id=note.user_id
     )
     db.add(new_note)
-    db.commit()
-    db.refresh(new_note)
+    await db.commit()
+    await db.refresh(new_note, ["author"])
     return new_note
