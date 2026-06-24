@@ -11,6 +11,11 @@ requests = "*"
 pydantic = {extras = ["email"], version = "*"}
 python-dotenv = "*"
 asyncpg = "*"
+pwdlib = {extras = ["argon2"], version = "*"}
+pyjwt = "*"
+pydantic-settings = "*"
+multipart = "*"
+python-multipart = "*"
 
 [dev-packages]
 

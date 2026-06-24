@@ -46,7 +46,7 @@ DB_URL=postgresql+asyncpg://notes_user:your_password@localhost:5432/notes_db
 pipenv install
 ```
 
-#### 4. Run the app
+### 4. Run the app
 
 ```bash
 cd app
