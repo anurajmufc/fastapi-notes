@@ -7,23 +7,19 @@ from sqlalchemy.orm import selectinload
 import models
 from database import get_db
 
+from auth import CurrentUser
+
 router = APIRouter()
 
 # Route to create a note
 
 
 @router.post("", response_model=NoteResponse, status_code=status.HTTP_201_CREATED)
-async def create_note(note: NoteCreate, db: Annotated[AsyncSession, Depends(get_db)]):
-    result = await db.execute(select(models.User).where(
-        models.User.id == note.user_id))
-    user = result.scalars().first()
-    if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
-                            detail="User not found")
+async def create_note(note: NoteCreate, current_user: CurrentUser, db: Annotated[AsyncSession, Depends(get_db)]):
     new_note = models.Note(
         title=note.title,
         content=note.content,
-        user_id=note.user_id
+        user_id=current_user.id
     )
     db.add(new_note)
     await db.commit()
@@ -56,7 +52,7 @@ async def get_note(note_id: int, db: Annotated[AsyncSession, Depends(get_db)]):
 
 
 @router.put("/{note_id}", response_model=NoteResponse)
-async def update_note_full(note_id: int, note_data: NoteCreate, db: Annotated[AsyncSession, Depends(get_db)]):
+async def update_note_full(note_id: int, current_user: CurrentUser, note_data: NoteCreate, db: Annotated[AsyncSession, Depends(get_db)]):
 
     # Check if note exists in db
     result = await db.execute(select(models.Note).options(
@@ -66,19 +62,13 @@ async def update_note_full(note_id: int, note_data: NoteCreate, db: Annotated[As
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
                             detail="Note not found")
 
-    # Check if user id linked to the note that is supposed to be changed exists
-    if note_data.user_id != note.user_id:
-        result = await db.execute(select(models.User).where(
-            models.User.id == note_data.user_id))
-        user = result.scalars().first()
-        if not user:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
-                                detail="User not found")
+    if note.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail="Not authorized to update this note")
 
     # Replace the note
     note.title = note_data.title
     note.content = note_data.content
-    note.user_id = note_data.user_id
 
     await db.commit()
     await db.refresh(note, ["author"])
@@ -88,14 +78,19 @@ async def update_note_full(note_id: int, note_data: NoteCreate, db: Annotated[As
 
 
 @router.patch("/{note_id}", response_model=NoteResponse)
-async def update_note_partial(note_id: int, note_data: NoteUpdate, db: Annotated[AsyncSession, Depends(get_db)]):
+async def update_note_partial(note_id: int, current_user: CurrentUser, note_data: NoteUpdate, db: Annotated[AsyncSession, Depends(get_db)]):
 
     # Check if note exists in db
     result = await db.execute(select(models.Note).options(selectinload(models.Note.author)).where(models.Note.id == note_id))
     note = result.scalars().first()
+
     if not note:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
                             detail="Note not found")
+
+    if note.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                        detail="Not authorized to update this note")
 
     # Update the note
     update_data = note_data.model_dump(exclude_unset=True)
@@ -110,7 +105,7 @@ async def update_note_partial(note_id: int, note_data: NoteUpdate, db: Annotated
 
 
 @router.delete("/{note_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_note(note_id: int, db: Annotated[AsyncSession, Depends(get_db)]):
+async def delete_note(note_id: int, current_user: CurrentUser, db: Annotated[AsyncSession, Depends(get_db)]):
     result = await db.execute(select(models.Note).options(
         selectinload(models.Note.author)).where(models.Note.id == note_id))
     note = result.scalars().first()
@@ -119,6 +114,10 @@ async def delete_note(note_id: int, db: Annotated[AsyncSession, Depends(get_db)]
     if not note:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
                             detail="Note not found")
+
+    if note.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail="Not authorized to delete this note")
 
     await db.delete(note)
     await db.commit()

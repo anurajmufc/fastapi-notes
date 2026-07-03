@@ -43,7 +43,7 @@ class NoteUpdate(BaseModel):
 
 
 class NoteCreate(NoteBase):
-    user_id: int
+    pass
 
 
 class NoteResponse(NoteBase):
