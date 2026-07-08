@@ -97,12 +97,12 @@ async def get_current_user(current_user: CurrentUser):
 
 
 @router.patch("/{user_id}", response_model=UserPrivate)
-async def update_user(user_id: int, user_update: UserUpdate,current_user: CurrentUser, db: Annotated[AsyncSession, Depends(get_db)]):
+async def update_user(user_id: int, user_update: UserUpdate, current_user: CurrentUser, db: Annotated[AsyncSession, Depends(get_db)]):
 
     if user_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                             detail="Not authorized to update this user")
-    
+
     # Check if user exists
     result = await db.execute(select(models.User).where(
         models.User.id == user_id))
@@ -148,12 +148,12 @@ async def update_user(user_id: int, user_update: UserUpdate,current_user: Curren
 
 
 @router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_user(user_id: int, current_user:CurrentUser,db: Annotated[AsyncSession, Depends(get_db)]):
+async def delete_user(user_id: int, current_user: CurrentUser, db: Annotated[AsyncSession, Depends(get_db)]):
 
     if user_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                             detail="Not authorized to delete this user")
-    
+
     result = await db.execute(select(models.User).where(models.User.id == user_id))
     user = result.scalars().first()
 
@@ -179,21 +179,3 @@ async def get_user(user_id: int, db: Annotated[AsyncSession, Depends(get_db)]):
 
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
                         detail="User not found")
-
-# Route to get all notes created by a user
-
-
-@router.get("/{user_id}/notes", response_model=list[NoteResponse])
-async def get_user_posts(user_id: int, db: Annotated[AsyncSession, Depends(get_db)]):
-    result = await db.execute(select(models.User).where(
-        models.User.id == user_id))
-    user = result.scalars().first()
-
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-
-    result = await db.execute(select(models.Note).options(selectinload(models.Note.author)).where(
-        models.Note.user_id == user_id))
-    notes = result.scalars().all()
-    return notes

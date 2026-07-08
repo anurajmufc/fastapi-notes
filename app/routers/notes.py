@@ -31,8 +31,8 @@ async def create_note(note: NoteCreate, current_user: CurrentUser, db: Annotated
 
 
 @router.get("", name="notes", response_model=list[NoteResponse])
-async def get_notes(db: Annotated[AsyncSession, Depends(get_db)]):
-    result = await db.execute(select(models.Note).options(selectinload(models.Note.author)))
+async def get_notes(current_user: CurrentUser, db: Annotated[AsyncSession, Depends(get_db)]):
+    result = await db.execute(select(models.Note).where(models.Note.user_id == current_user.id).options(selectinload(models.Note.author)))
     notes = result.scalars().all()
     return list(notes)
 
@@ -40,8 +40,8 @@ async def get_notes(db: Annotated[AsyncSession, Depends(get_db)]):
 
 
 @router.get("/{note_id}", response_model=NoteResponse)
-async def get_note(note_id: int, db: Annotated[AsyncSession, Depends(get_db)]):
-    result = await db.execute(select(models.Note).options(selectinload(models.Note.author)).where(models.Note.id == note_id))
+async def get_note(current_user: CurrentUser, note_id: int, db: Annotated[AsyncSession, Depends(get_db)]):
+    result = await db.execute(select(models.Note).where(models.Note.user_id == current_user.id).options(selectinload(models.Note.author)).where(models.Note.id == note_id))
     note = result.scalars().first()
     if note:
         return note
@@ -90,7 +90,7 @@ async def update_note_partial(note_id: int, current_user: CurrentUser, note_data
 
     if note.user_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
-                        detail="Not authorized to update this note")
+                            detail="Not authorized to update this note")
 
     # Update the note
     update_data = note_data.model_dump(exclude_unset=True)
