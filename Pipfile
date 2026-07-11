@@ -16,6 +16,7 @@ pyjwt = "*"
 pydantic-settings = "*"
 multipart = "*"
 python-multipart = "*"
+alembic = "*"
 
 [dev-packages]
 
