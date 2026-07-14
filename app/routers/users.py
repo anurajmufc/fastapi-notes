@@ -1,10 +1,8 @@
 from typing import Annotated
 from fastapi import APIRouter, HTTPException, status, Depends
-from schemas import (NoteResponse, UserCreate,
-                     UserPublic, UserPrivate, Token, UserUpdate)
+from schemas import (UserCreate, UserPublic, UserPrivate, Token, UserUpdate)
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import func, select
-from sqlalchemy.orm import selectinload
 import models
 from database import get_db
 
