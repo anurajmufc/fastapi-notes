@@ -1,7 +1,7 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from database import engine
-from routers import notes, users
+from routers import applications, users
 
 
 @asynccontextmanager
@@ -15,7 +15,7 @@ app = FastAPI(lifespan=lifespan)
 
 app.include_router(users.router, prefix="/api/users", tags=["users"])
 
-app.include_router(notes.router, prefix="/api/notes", tags=["notes"])
+app.include_router(applications.router, prefix="/api/applications", tags=["applications"])
 
 
 # Home route
@@ -23,4 +23,4 @@ app.include_router(notes.router, prefix="/api/notes", tags=["notes"])
 
 @app.get("/")
 async def read_root():
-    return "Welcome to my notes API"
+    return "Welcome to my Job Application Tracker API"
