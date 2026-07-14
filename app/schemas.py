@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from pydantic import BaseModel, ConfigDict, Field, EmailStr
 
 
@@ -32,24 +32,35 @@ class Token(BaseModel):
     token_type: str
 
 
-class NoteBase(BaseModel):
-    title: str = Field(min_length=1, max_length=100)
-    content: str = Field(min_length=1)
+class JobApplicationBase(BaseModel):
+
+    company: str = Field(min_length=1, max_length=120)
+    role: str = Field(min_length=1, max_length=120)
+    url: str | None = Field(default=None, min_length=1, max_length=500)
+    location: str | None = Field(default=None, min_length=1, max_length=120)
+    notes: str = Field(min_length=1)
 
 
-class NoteUpdate(BaseModel):
-    title: str | None = Field(default=None, min_length=1, max_length=100)
-    content: str | None = Field(default=None, min_length=1)
+class JobApplicationUpdate(BaseModel):
+
+    company: str | None = Field(default=None, min_length=1, max_length=120)
+    role: str | None = Field(default=None, min_length=1, max_length=120)
+    status: str | None = Field(default=None, min_length=1, max_length=20)
+    url: str | None = Field(default=None, min_length=1, max_length=500)
+    location: str | None = Field(default=None, min_length=1, max_length=120)
+    notes: str | None = Field(default=None, min_length=1)
 
 
-class NoteCreate(NoteBase):
+class JobApplicationCreate(JobApplicationBase):
     pass
 
 
-class NoteResponse(NoteBase):
+class JobApplicationResponse(JobApplicationBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
     user_id: int
-    date_created: datetime
-    author: UserPublic
+    status: str
+    date_applied: date
+    created_at: datetime
+    owner: UserPublic
