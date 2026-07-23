@@ -1,6 +1,6 @@
-# Notes API
+# Job Application Tracker API
 
-A RESTful notes API built using FastAPI and async SQLAlchemy, backed by PostgreSQL. Users can be created and managed, each user can own multiple notes.
+A RESTful Job Application Tracker API built using FastAPI and async SQLAlchemy, backed by PostgreSQL. Users can be created and managed, each user can own multiple job applications.
 
 ## Tech Stack
 
@@ -9,12 +9,15 @@ A RESTful notes API built using FastAPI and async SQLAlchemy, backed by PostgreS
 - **PostgreSQL** - relational database
 - **Pydantic v2** - request/response validation and serialization
 - **Pipenv** - dependency management
+- **Alembic** - database migrations
+- **argon2 + JWT** - password hashing and token-based authentication
 
 ## Features
 
-- Full CRUD for notes(create, read, update(full/partial), delete)
+- Full CRUD for job applications(create, read, update(full/partial), delete)
 - User management with username/email
-- One-to-many relationships (users -> notes) with cascade delete
+- JWT authentication with argon2 password hashing (all application routes require a logged-in user)
+- One-to-many relationships (users -> job applications) with cascade delete
 - Async, non-blocking database access
 - Routes organized into modular APIRouters
 
@@ -22,14 +25,14 @@ A RESTful notes API built using FastAPI and async SQLAlchemy, backed by PostgreS
 
 - Python 3.13
 - PostgreSQL running locally
-- -Pipenv
+- Pipenv
   
 ### 1. Create the database
 
 ```bash
 sudo -u postgres psql
-CREATE USER notes_user WITH PASSWORD 'your_password';
-CREATE DATABASE notes_db OWNER notes_user;
+CREATE USER jobs_user WITH PASSWORD 'your_password';
+CREATE DATABASE jobs_db OWNER jobs_user;
 ```
 
 ### 2. Configure Environment
@@ -37,7 +40,7 @@ CREATE DATABASE notes_db OWNER notes_user;
 Create .env file in the project root:
 
 ```bash
-DB_URL=postgresql+asyncpg://notes_user:your_password@localhost:5432/notes_db
+DB_URL=postgresql+asyncpg://jobs_user:your_password@localhost:5432/jobs_db
 ```
 
 ### 3. Install dependencies
@@ -46,7 +49,13 @@ DB_URL=postgresql+asyncpg://notes_user:your_password@localhost:5432/notes_db
 pipenv install
 ```
 
-### 4. Run the app
+### 4. Generate database
+
+```bash
+alembic upgrade head
+```
+
+### 5. Run the app
 
 ```bash
 cd app
@@ -59,17 +68,18 @@ Visit [http://localhost:8000/docs](http://localhost:8000/docs) for the interacti
 
 |Method|Path|Description|
 |------|------------|-----------|
-|GET|/api/notes|List all notes|
-|POST|/api/notes|Create a note|
-|GET|/api/notes/{id}|Get a note by ID|
-|PUT|/api/notes/{id}|Fully replace a note|
-|PATCH|/api/notes/{id}|Partially update a note|
-|DELETE|/api/notes/{id}|Delete a note|
+|GET|/api/applications|List all job applications|
+|POST|/api/applications|Create a job application|
+|GET|/api/applications/{id}|Get a job application by ID|
+|PUT|/api/applications/{id}|Fully replace a job application|
+|PATCH|/api/applications/{id}|Partially update a job application|
+|DELETE|/api/applications/{id}|Delete a job application|
+|POST|/api/users/token|Returns a JWT access token|
+|GET|/api/users/me|Get current user|
 |POST|/api/users|Create a user|
 |GET|/api/users/{id}|Get a user by ID|
 |PATCH|/api/users/{id}|Partially update a user|
 |DELETE|/api/users/{id}|Delete a user|
-|GET|/api/users/{id}/notes|List a user's notes|
 
 ## Project Structure
 
@@ -77,16 +87,16 @@ Visit [http://localhost:8000/docs](http://localhost:8000/docs) for the interacti
 app/
 ├── main.py          # App entry point, router registration, lifespan
 ├── database.py      # Async engine, session factory, Base
-├── models.py        # SQLAlchemy ORM models (User, Note)
+├── models.py        # SQLAlchemy ORM models (User, JobApplication)
 ├── schemas.py       # Pydantic schemas (validation & serialization)
+├── auth.py          # Generate and verify JWTs, get current user
+├── config.py        # Environment Configuration
 └── routers/
-    ├── notes.py     # /api/notes routes
-    └── users.py     # /api/users routes
+    ├── applications.py     # /api/applications routes
+    └── users.py            # /api/users routes
 ```
 
-## Roadmap
-
-I plan to upgrade this notes API into a full job application tracker  - a tool to manage job applications with user authentication and a frontend. These are some of the enhancements i would like to add in the future:
+## Planned enhancements
 
 - [ ] Soft deletes
 - [ ] PostgreSQL full-text search
